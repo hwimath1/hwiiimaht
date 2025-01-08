@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>삼각부등식</title>
+
+  <!-- MathJax 로드 (LaTeX 수식 렌더링) -->
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+
+  <style>
+    body {
+      margin: 0; padding: 0;
+      font-family: sans-serif;
+      background: #f0f0f0;
+    }
+    h1, h2, h3 {
+      text-align: center;
+      margin: 0.5em;
+    }
+    #gameContainer {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 1em;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+    #nameInputContainer {
+      text-align: center;
+      margin: 1em 0;
+    }
+    #nameInput {
+      width: 200px;
+      padding: 0.5em;
+      font-size: 1em;
+    }
+    #difficultyContainer {
+      text-align: center;
+      margin: 1em 0;
+    }
+    button {
+      cursor: pointer;
+      padding: 0.6em 1.2em;
+      margin: 0.3em;
+      font-size: 1em;
+      border: none;
+      border-radius: 5px;
+      background: #007bff;
+      color: #fff;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    #quizArea {
+      display: none;
+      margin-top: 1em;
+    }
+    #energyBarContainer {
+      position: relative;
+      width: 80%;
+      height: 20px;
+      background: #ddd;
+      margin: 0.5em auto 1em auto;
+    }
+    #energyBar {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 100%;
+      background: linear-gradient(90deg, #ff6961, #fdae61);
+      transition: width 0.2s;
+    }
+    #gameTimeInfo {
+      text-align: center;
+      margin: 0.5em 0 1em 0;
+      font-weight: bold;
+    }
+    #livesInfo, #scoreInfo {
+      text-align: center;
+      margin: 0.5em 0;
+    }
+    #questionContainer {
+      margin: 1em;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 1em;
+      background: #fafafa;
+    }
+    .choiceContainer {
+      margin: 0.5em 0;
+    }
+    .choiceBtn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      margin: 0.2em 0;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background: #eee;
+      color: #000;
+      padding: 0.5em;
+      transition: background 0.2s;
+    }
+    .choiceBtn:hover {
+      background: #ddd;
+    }
+    #response {
+      margin: 1em 0;
+      white-space: pre-wrap;
+      font-size: 0.9em;
+      color: #333;
+    }
+    #scoreSendBtn {
+      background: #28a745;
+      margin-top: 1em;
+    }
+    #scoreSendBtn:hover {
+      background: #1f7e33;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <h1>삼각부등식</h1>
+
+    <!-- 첫 화면: 이름 입력 -->
+    <div id="nameInputContainer">
+      <input id="nameInput" type="text" placeholder="이름을 입력하세요" />
+    </div>
+
+    <!-- 난이도 선택 버튼들 -->
+    <div id="difficultyContainer">
+      <button onclick="startGame('최상')">최상 난이도</button>
+      <button onclick="startGame('상')">상 난이도</button>
+      <button onclick="startGame('중')">중 난이도</button>
+      <button onclick="startGame('하')">하 난이도</button>
+    </div>
+
+    <!-- 퀴즈 영역 -->
+    <div id="quizArea">
+      <div id="energyBarContainer">
+        <div id="energyBar"></div>
+      </div>
+      <div id="gameTimeInfo"></div>
+      <div id="livesInfo"></div>
+      <div id="scoreInfo"></div>
+
+      <div id="questionContainer"></div>
+      <button id="scoreSendBtn" onclick="sendScore()">점수 전송</button>
+      <div id="response"></div>
+    </div>
+  </div>
+
+<script>
+// 전역 변수들
+let playerName = '';
+let difficulty = '';
+let timeLimitPerQ = 0;
+let totalScore = 0;
+let lives = 3;
+let currentQuestionIndex = 0;
+let questionOrder = [];
+let totalGameTime = 0;
+let totalGameTimer = null;
+let energyBarTimer = null;
+let energyWidth = 100;
+let gameStartTime = null;
+
+// 난이도별 시간 & 점수
+const DIFFICULTY_SETTINGS = {
+  '최상': { time: 30, score: 20 },
+  '상':  { time: 40, score: 15 },
+  '중':  { time: 50, score: 13 },
+  '하':  { time: 9999, score: 10 } // 하: 사실상 시간 무제한
+};
+
+/* 
+  * "모든 문제를 빠짐없이" 
+  * "이전과 동일한 문항들"이지만, 이번에는 
+    1) 분수(예: 4π/3)를 LaTeX 분수 표현 \\(\\frac{4\\pi}{3}\\)로  
+    2) <=, >= 등을 모두 \(\le\), \(\ge\) 형태로  
+    3) 하나도 빠짐없이 전체 업데이트
+*/
+
+// ALL_QUESTIONS: 모든 문항 (문제+보기)
+// prompt: 문제(LaTeX OK), choices: 4지선다
+// 보기에서는 fraction을 예) \(\frac{4\pi}{3}\), 부등호는 \(\le\), \(\ge\) 등
+const ALL_QUESTIONS = [
+
+  // (1)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(2\\cos x + 1 \\ge 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(0 \\le x \\le \\frac{2\\pi}{3}\\)\\(\\text{ 또는 }\\)\\(\\frac{4\\pi}{3} \\le x < 2\\pi\\)`,
+        correct: true
+      },
+      {
+        text: `\\(0 \\le x \\le \\frac{\\pi}{3}\\)\\(\\text{ 또는 }\\)\\(\\frac{4\\pi}{3} \\le x < 2\\pi\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{6} \\le x \\le \\frac{7\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(x = \\frac{\\pi}{2}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (2)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\sqrt{2}\\cos x + 1 \\le 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{3\\pi}{4} \\le x \\le \\frac{5\\pi}{4}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{5\\pi}{6} \\le x < \\frac{7\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{7\\pi}{4} \\le x < 2\\pi\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (3) (원래 (13): cos x <= 1/2)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\cos x \\le \\frac{1}{2}\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{\\pi}{3} \\le x \\le \\frac{5\\pi}{3}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{2\\pi}{3} \\le x < \\frac{4\\pi}{3}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 \\le x < \\frac{2\\pi}{3}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{3\\pi}{4} \\le x < 2\\pi\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (4)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(2\\cos x \\ge \\sqrt{3}\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(0 \\le x \\le \\frac{\\pi}{6}\\)\\(\\text{ 또는 }\\)\\(\\frac{11\\pi}{6} \\le x < 2\\pi\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{6} \\le x \\le \\frac{5\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{2} \\le x < 2\\pi\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 < x < \\frac{\\pi}{2}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (5)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\sqrt{2}\\cos x \\le -1\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{3\\pi}{4} \\le x \\le \\frac{5\\pi}{4}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{4} \\le x \\le \\frac{3\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{5\\pi}{4} \\le x < 2\\pi\\)`,
+        correct: false
+      },
+      {
+        text: `\\(x = 0\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (8)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(2\\sin x + 1 < 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{7\\pi}{6} < x < \\frac{11\\pi}{6}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{5\\pi}{6} \\le x \\le \\frac{7\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{2} < x < \\frac{3\\pi}{2}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (9)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\cos x > -\\frac{\\sqrt{2}}{2}\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(0 \\le x < \\frac{3\\pi}{4},\\; \\frac{5\\pi}{4} < x < 2\\pi\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{2} \\le x \\le \\frac{3\\pi}{2}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{3\\pi}{4} \\le x \\le \\frac{5\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(x = \\frac{\\pi}{4}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (10)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\cos\\bigl(x - \\frac{\\pi}{4}\\bigr) \\le -\\frac{\\sqrt{2}}{2}\\)\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\pi \\le x \\le \\frac{3\\pi}{2}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{4} \\le x \\le \\frac{\\pi}{2}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{3\\pi}{2} \\le x < 2\\pi\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 \\le x < \\frac{3\\pi}{4}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (11)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\sqrt{2}\\sin x + 1 < 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{5\\pi}{4} < x < \\frac{7\\pi}{4}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(0 \\le x \\le \\frac{\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{7\\pi}{4} \\le x < 2\\pi\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{3} \\le x \\le \\frac{2\\pi}{3}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (12)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\sin x \\ge \\frac{\\sqrt{3}}{2}\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{\\pi}{3} \\le x \\le \\frac{2\\pi}{3}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{6} \\le x \\le \\frac{5\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 < x < \\frac{\\pi}{2}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{2\\pi}{3} \\le x < \\frac{4\\pi}{3}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (16)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\sin x > \\cos x\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{\\pi}{4} < x < \\frac{5\\pi}{4}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(0 < x < \\pi\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{4} \\le x \\le \\frac{3\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{3\\pi}{4} < x < \\frac{5\\pi}{4}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (17)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\sin x \\ge \\cos x\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{\\pi}{4} \\le x \\le \\frac{5\\pi}{4}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{4} < x < \\frac{5\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{5\\pi}{4} \\le x < 2\\pi\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (18)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\cos\\bigl(x - \\frac{\\pi}{3}\\bigr) \\le -\\frac{\\sqrt{3}}{2}\\)\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{7\\pi}{6} \\le x \\le \\frac{3\\pi}{2}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{5\\pi}{6} < x < \\frac{7\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{5\\pi}{6} \\le x \\le \\frac{4\\pi}{3}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{3}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (19)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(2\\sin\\bigl(x + \\frac{\\pi}{6}\\bigr) > \\sqrt{2}\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{\\pi}{12} < x < \\frac{7\\pi}{12}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{6} < x < \\frac{5\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{12} \\le x \\le \\frac{7\\pi}{12}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{4} < x < \\frac{3\\pi}{4}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (20)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(-\\cos^2 x - \\sin x + 1 \\le 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(0 \\le x \\le \\pi\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{2} \\le x \\le \\frac{3\\pi}{2}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{2}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\pi \\le x < 2\\pi\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (28)
+  {
+    prompt: `주어진 범위 \\(0 \\le x < \\pi\\)에서 \\(\\tan x < 1\\)을 만족하는 x의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{4}\\) \\(\\text{ 또는}\\) \\(\\frac{\\pi}{2} < x < \\pi\\)`,
+        correct: true
+      },
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{4} \\le x < \\frac{3\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{2}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (29)
+  {
+    prompt: `주어진 범위 \\(-\\pi \\le x < \\pi\\)에서 \\(\\cos x \\le -\\frac{\\sqrt{3}}{2}\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(-\\pi \\le x \\le -\\frac{5\\pi}{6}\\) \\(\\text{ 또는}\\) \\(\\frac{5\\pi}{6} \\le x < \\pi\\)`,
+        correct: true
+      },
+      {
+        text: `\\(-\\frac{3\\pi}{4} \\le x \\le \\frac{3\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(-\\frac{5\\pi}{6} < x < \\frac{5\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(-\\frac{\\pi}{2} < x < \\frac{\\pi}{2}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (30)
+  {
+    prompt: `주어진 범위 \\(0 \\le x < \\frac{\\pi}{2}\\)에서 \\(\\tan x - \\sqrt{3} \\le 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(0 \\le x \\le \\frac{\\pi}{3}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{3} < x < \\frac{\\pi}{2}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(x = 0\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (31)
+  {
+    prompt: `주어진 범위 \\(-\\frac{\\pi}{2} < x < \\frac{\\pi}{2}\\)에서 \\(-\\sqrt{3} < \\tan x < 1\\)을 만족하는 x의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(-\\frac{\\pi}{3} < x < \\frac{\\pi}{4}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(-\\frac{\\pi}{3} \\le x \\le \\frac{\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(-\\frac{\\pi}{4} < x < \\frac{\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(-\\frac{\\pi}{3} < x < 0\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (32)
+  {
+    prompt: `주어진 범위 \\(-\\frac{\\pi}{2} < x < \\frac{\\pi}{2}\\)에서 \\(3\\tan^2 x - 1 > 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(-\\frac{\\pi}{2} < x < -\\frac{\\pi}{6}\\) \\(\\text{ 또는}\\) \\(\\frac{\\pi}{6} < x < \\frac{\\pi}{2}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(-\\frac{\\pi}{6} < x < \\frac{\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(-\\frac{\\pi}{4} < x < \\frac{\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(x = 0\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (37)
+  {
+    prompt: `주어진 범위 \\(0 \\le x < \\pi\\)에서 \\(2\\sin^2\\bigl(x + \\frac{3\\pi}{2}\\bigr) + 3\\sin x - 3 \\ge 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{\\pi}{6} \\le x \\le \\frac{5\\pi}{6}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{3}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{4} \\le x \\le \\frac{3\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{5\\pi}{12} < x < \\frac{7\\pi}{12}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (38)
+  {
+    prompt: `\\(0 < x < 2\\pi\\)에서 \\(\\cos^2 x - \\frac{1}{2}\\sin x - 1 \\ge 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\pi \\le x \\le \\frac{7\\pi}{6}\\) \\(\\text{ 또는}\\) \\(\\frac{11\\pi}{6} \\le x < 2\\pi\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{7\\pi}{6} < x < \\frac{11\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{5\\pi}{6} \\le x < \\frac{3\\pi}{2}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{2} < x < \\frac{3\\pi}{2}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (39)
+  {
+    prompt: `\\(0 \\le x \\le \\pi\\)에서 \\(2\\sin^2 x - 3\\cos x < 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{3}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{3} \\le x \\le \\frac{2\\pi}{3}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{4} < x < \\frac{3\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{2} \\le x \\le \\pi\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (40)
+  {
+    prompt: `주어진 범위 \\(-\\pi < x < \\pi\\)에서 \\(-2\\sin^2 x + 3\\cos x + 3 \\ge 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(-\\frac{2\\pi}{3} \\le x \\le \\frac{2\\pi}{3}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(-\\pi < x < -\\frac{\\pi}{2}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(-\\frac{3\\pi}{4} < x < \\frac{3\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(-\\frac{\\pi}{2} \\le x \\le \\frac{\\pi}{2}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (41)
+  {
+    prompt: `\\(0 < x < 2\\pi\\)에서 \\(-2\\cos^2 x + \\sin x + 2 \\le 0\\)의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\pi \\le x \\le \\frac{7\\pi}{6}\\) \\(\\text{ 또는}\\) \\(\\frac{11\\pi}{6} \\le x < 2\\pi\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{2} \\le x \\le \\frac{3\\pi}{2}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{5\\pi}{12} < x < \\frac{7\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{7\\pi}{6} \\le x \\le \\frac{11\\pi}{6}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (42)
+  {
+    prompt: `주어진 범위 \\(-\\frac{\\pi}{2} < x < \\frac{\\pi}{2}\\)에서  
+\\((\\sin x + \\cos x)(\\sin x - \\sqrt{3}\\cos x) < 0\\) 의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(-\\frac{\\pi}{4} < x < \\frac{\\pi}{3}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(-\\frac{\\pi}{6} \\le x \\le \\frac{\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(-\\frac{\\pi}{3} < x < 0\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 < x < \\frac{\\pi}{3}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (43)
+  {
+    prompt: `주어진 범위 \\(-\\frac{\\pi}{2} < x < \\frac{\\pi}{2}\\)에서  
+\\(\\cos x \\le \\sin x\\) 의 해를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{\\pi}{4} \\le x < \\frac{\\pi}{2}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(-\\frac{\\pi}{4} < x < 0\\)`,
+        correct: false
+      },
+      {
+        text: `\\(-\\frac{\\pi}{4} \\le x < \\frac{\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 \\le x < \\frac{\\pi}{4}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (44)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(2\\sin^2 x - 3\\cos x \\ge 0\\)의 해가  
+\\(\\alpha \\le x \\le \\beta\\)일 때, \\(\\alpha - \\beta\\)의 값을 구하시오.`,
+    choices: [
+      { text: `\\(\\frac{2\\pi}{3}\\)`, correct: false },
+      { text: `\\(\\frac{4\\pi}{3}\\)`, correct: true },
+      { text: `\\(\\pi\\)`,            correct: false },
+      { text: `\\(\\frac{5\\pi}{6}\\)`, correct: false }
+    ]
+  },
+
+  // (45)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(2\\sin x + 1 > 0\\)를 만족하는 구간이  
+\\(0 \\le x < \\alpha\\) 또는 \\(\\beta < x < 2\\pi\\)일 때, \\(\\beta - \\alpha\\)의 값을 구하시오.`,
+    choices: [
+      { text: `\\(\\frac{\\pi}{3}\\)`,  correct: false },
+      { text: `\\(\\frac{2\\pi}{3}\\)`, correct: true },
+      { text: `\\(\\frac{3\\pi}{4}\\)`, correct: false },
+      { text: `\\(\\frac{5\\pi}{6}\\)`, correct: false }
+    ]
+  },
+
+  // (46)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(2\\cos x - \\sqrt{3} < 0\\)의 해가  
+\\(\\alpha < x < \\beta\\)라 할 때, \\(\\frac{1}{\\tan(\\beta - \\alpha)}\\)의 값을 구하시오.`,
+    choices: [
+      { text: `\\(-\\frac{\\sqrt{3}}{3}\\)`, correct: true },
+      { text: `\\(\\frac{\\sqrt{3}}{3}\\)`,  correct: false },
+      { text: `\\(-\\sqrt{3}\\)`,           correct: false },
+      { text: `\\(\\frac{1}{2}\\)`,         correct: false }
+    ]
+  },
+
+  // (47)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(\\sin x \\le -\\frac{1}{4}\\)를 만족하는  
+x의 범위가 \\(\\alpha \\le x \\le \\beta\\)일 때, \\(\\cos\\bigl(\\frac{\\alpha+\\beta}{4}\\bigr)\\)의 값을 구하시오.`,
+    choices: [
+      { text: `\\(-\\frac{\\sqrt{2}}{2}\\)`, correct: true },
+      { text: `\\(\\frac{\\sqrt{2}}{2}\\)`,  correct: false },
+      { text: `\\(-\\frac{1}{2}\\)`,         correct: false },
+      { text: `\\(\\frac{\\sqrt{3}}{2}\\)`,  correct: false }
+    ]
+  },
+
+  // (48)
+  {
+    prompt: `\\(0 \\le x < 2\\pi\\)에서 \\(5\\sin\\bigl(\\frac{x}{2}\\bigr) \\ge 3\\)를 만족하는  
+x의 범위가 \\(\\alpha \\le x \\le \\beta\\)일 때, \\(\\cos\\bigl(\\frac{\\alpha + \\beta}{3}\\bigr)\\)의 값을 구하시오.`,
+    choices: [
+      { text: `\\(-\\frac{1}{2}\\)`, correct: true },
+      { text: `\\(\\frac{1}{2}\\)`,  correct: false },
+      { text: `\\(\\frac{\\sqrt{2}}{2}\\)`, correct: false },
+      { text: `\\(0\\)`,             correct: false }
+    ]
+  },
+
+  // (49)
+  {
+    prompt: `\\(0 \\le \\theta < 2\\pi\\)에서 \\(\\sin \\theta \\ge \\frac{\\sqrt{3}}{2}\\)를 만족하는  
+\\(\\theta\\)의 구간이 \\(\\alpha \\le \\theta \\le \\beta\\)일 때,  
+(\\beta - \\alpha)로 만든 부채꼴의 넓이를 구하시오.`,
+    choices: [
+      { text: `\\(\\frac{\\pi}{12}\\)`, correct: false },
+      { text: `\\(\\frac{\\pi}{6}\\)`,  correct: true },
+      { text: `\\(\\frac{\\pi}{8}\\)`,  correct: false },
+      { text: `\\(\\frac{\\pi}{4}\\)`,  correct: false }
+    ]
+  },
+
+  // (52)
+  {
+    prompt: `\\(\\cos^2\\theta - 4\\sin\\theta \\le 2a\\)가 모든 실수 \\(\\theta\\)에서  
+항상 성립하도록 하는 실수 \\(a\\)의 최소값을 구하시오.`,
+    choices: [
+      { text: `\\(1\\)`, correct: false },
+      { text: `\\(2\\)`, correct: true },
+      { text: `\\(3\\)`, correct: false },
+      { text: `\\(4\\)`, correct: false }
+    ]
+  },
+
+  // (53)
+  {
+    prompt: `모든 실수 \\(x\\)에 대해 \\(x^2 - 2x\\cos\\theta + \\sin\\theta + 1 > 0\\)이  
+항상 성립할 때, \\(0 \\le \\theta < 2\\pi\\)에서 \\(\\theta\\)의 값을 구하시오.`,
+    choices: [
+      { text: `\\(0 < \\theta < \\pi\\)`,   correct: true },
+      { text: `\\(0 < \\theta < 2\\pi\\)`,  correct: false },
+      { text: `\\(\\pi \\le \\theta < 2\\pi\\)`, correct: false },
+      { text: `\\(0 \\le \\theta < \\frac{\\pi}{2}\\)`, correct: false }
+    ]
+  },
+
+  // (54)
+  {
+    prompt: `\\(x^2 + 2\\cos\\theta\\,x + 3\\cos\\theta > 0\\)가  
+모든 x에서 항상 성립하도록 하는 \\(0 \\le \\theta < 2\\pi\\)에서 \\(\\theta\\)의 범위를 구하시오.`,
+    choices: [
+      {
+        text: `\\(0 \\le \\theta < \\frac{\\pi}{2}\\) \\(\\text{ 또는}\\) \\(\\frac{3\\pi}{2} < \\theta < 2\\pi\\)`,
+        correct: true
+      },
+      {
+        text: `\\(0 \\le \\theta < \\pi\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{2} < \\theta < \\frac{3\\pi}{2}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\frac{\\pi}{3} < \\theta < \\frac{5\\pi}{3}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (55)
+  {
+    prompt: `(2 cos^2 θ -1)x +1 > 0 가 모든 x에 대해 항상 성립하도록 하는  
+( π < θ < 2π )에서 θ의 범위를 구하시오.`,
+    choices: [
+      { text: `\\(\\pi < \\theta < \\frac{4\\pi}{3}\\)`,  correct: false },
+      { text: `\\(\\frac{4\\pi}{3} < \\theta < 2\\pi\\)`, correct: true },
+      { text: `\\(\\frac{5\\pi}{3} < \\theta < 2\\pi\\)`, correct: false },
+      { text: `\\(\\pi < \\theta < \\frac{3\\pi}{2}\\)`,  correct: false }
+    ]
+  },
+
+  // (57)
+  {
+    prompt: `모든 실수 x에 대해 x^2 + 2\\sqrt{2} x cosθ - 3 sinθ > 0 이  
+항상 성립하도록 할 때, (0 \\le θ < 2\\pi)에서 θ의 범위를 구하시오.`,
+    choices: [
+      {
+        text: `\\(\\frac{7\\pi}{6} < \\theta < \\frac{11\\pi}{6}\\)`,
+        correct: true
+      },
+      {
+        text: `\\(\\frac{\\pi}{6} < \\theta < \\frac{5\\pi}{6}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(0 \\le \\theta < \\frac{\\pi}{4}\\)`,
+        correct: false
+      },
+      {
+        text: `\\(\\pi < \\theta < \\frac{3\\pi}{2}\\)`,
+        correct: false
+      }
+    ]
+  },
+
+  // (58)
+  {
+    prompt: `모든 \\(\\theta\\)에 대해 ( sin^2 θ - 4 sin( \\frac{\\pi}{2} + θ ) \\le 5k ) 가  
+항상 성립할 때, k의 최소값을 구하시오.`,
+    choices: [
+      { text: `\\(0.6\\)`, correct: false },
+      { text: `\\(0.8\\)`, correct: true },
+      { text: `\\(0.75\\)`, correct: false },
+      { text: `\\(1.0\\)`,  correct: false }
+    ]
+  },
+
+  // (59)
+  {
+    prompt: `모든 x에 대해 ( x^2 - 2(2 sinθ +1)x +4 > 0 ) 이  
+항상 성립하도록 하는 0 \\le θ < 2π 에서 θ의 범위를 구하시오.`,
+    choices: [
+      {
+        text: `\\(0 \\le \\theta < \\frac{\\pi}{6}\\) \\(\\text{ 또는}\\) \\(\\frac{5\\pi}{6} < \\theta < 2\\pi\\)`,
+        correct: true
+      },
+      { text: `\\(\\frac{\\pi}{3} \\le \\theta < \\frac{2\\pi}{3}\\)`, correct: false },
+      { text: `\\(\\frac{\\pi}{2} \\le \\theta \\le \\frac{3\\pi}{2}\\)`, correct: false },
+      { text: `\\(\\frac{\\pi}{6} < \\theta < \\frac{5\\pi}{6}\\)`, correct: false }
+    ]
+  },
+
+  // (60)
+  {
+    prompt: `모든 x에 대해 ( sin^2 x + (a+2)cos x - (2a+1) > 0 ) 이  
+항상 성립하도록 하는 정수 a의 최댓값을 구하시오.`,
+    choices: [
+      { text: `-4`, correct: false },
+      { text: `-3`, correct: false },
+      { text: `-2`, correct: true },
+      { text: `-1`, correct: false }
+    ]
+  }
+
+];
+
+// 문제/보기 섞기
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+// 게임 시작
+function startGame(selectedDifficulty) {
+  const nameVal = document.getElementById('nameInput').value.trim();
+  if (!nameVal) {
+    alert("이름을 입력하세요!");
+    return;
+  }
+  playerName = nameVal;
+  difficulty = selectedDifficulty;
+  timeLimitPerQ = DIFFICULTY_SETTINGS[difficulty].time;
+
+  totalScore = 0;
+  lives = 3;
+  currentQuestionIndex = 0;
+  energyWidth = 100;
+
+  // 문제 순서 섞기
+  questionOrder = [...Array(ALL_QUESTIONS.length).keys()];
+  shuffleArray(questionOrder);
+
+  document.getElementById('difficultyContainer').style.display = 'none';
+  document.getElementById('nameInputContainer').style.display = 'none';
+  document.getElementById('quizArea').style.display = 'block';
+
+  // 전체 게임 시간
+  totalGameTime = 0;
+  gameStartTime = Date.now();
+  if (totalGameTimer) clearInterval(totalGameTimer);
+  totalGameTimer = setInterval(() => {
+    const now = Date.now();
+    totalGameTime = Math.floor((now - gameStartTime) / 1000);
+    document.getElementById('gameTimeInfo').innerText =
+      "전체 게임 시간: " + totalGameTime + "초";
+  }, 1000);
+
+  loadNextQuestion();
+}
+
+function loadNextQuestion() {
+  if (lives <= 0) {
+    endGame("목숨이 모두 소진되었습니다! 게임 종료!");
+    return;
+  }
+  if (currentQuestionIndex >= ALL_QUESTIONS.length) {
+    endGame("출제 가능한 문제를 모두 풀었습니다! 축하합니다!");
+    return;
+  }
+
+  const qIdx = questionOrder[currentQuestionIndex];
+  const questionObj = ALL_QUESTIONS[qIdx];
+
+  shuffleArray(questionObj.choices);
+
+  const qContainer = document.getElementById('questionContainer');
+  qContainer.innerHTML = `
+    <div>
+      <h3>문제 ${currentQuestionIndex + 1}</h3>
+      <div>${questionObj.prompt}</div>
+      <div class="choiceContainer" id="choiceArea"></div>
+    </div>
+  `;
+
+  const choiceArea = qContainer.querySelector("#choiceArea");
+  questionObj.choices.forEach((c) => {
+    const btn = document.createElement("button");
+    btn.className = "choiceBtn";
+    btn.innerHTML = c.text;
+    btn.onclick = () => { onChoiceClick(c.correct, questionObj); };
+    choiceArea.appendChild(btn);
+  });
+
+  document.getElementById('scoreInfo').innerText = "점수: " + totalScore;
+  document.getElementById('livesInfo').innerText = "남은 기회: " + lives;
+
+  MathJax.typeset();
+
+  if (difficulty === "하") {
+    document.getElementById('energyBarContainer').style.display = 'none';
+  } else {
+    document.getElementById('energyBarContainer').style.display = 'block';
+    energyWidth = 100;
+    updateEnergyBar();
+    if (energyBarTimer) clearInterval(energyBarTimer);
+
+    // 0.5초마다 실행: (100 / timeLimitPerQ) * 0.5씩 감소
+    energyBarTimer = setInterval(() => {
+      energyWidth -= (100 / timeLimitPerQ) * 0.5;
+      if (energyWidth <= 0) {
+        energyWidth = 0;
+        clearInterval(energyBarTimer);
+        lives--;
+        alert("시간이 소진되었습니다! 기회가 1 줄어듭니다.");
+        currentQuestionIndex++;
+        loadNextQuestion();
+        return;
+      }
+      updateEnergyBar();
+    }, 500);
+  }
+}
+
+function updateEnergyBar() {
+  const bar = document.getElementById('energyBar');
+  bar.style.width = energyWidth + "%";
+}
+
+function onChoiceClick(isCorrect, questionObj) {
+  if (energyBarTimer) clearInterval(energyBarTimer);
+  energyWidth = 100;
+  updateEnergyBar();
+
+  if (isCorrect) {
+    totalScore += DIFFICULTY_SETTINGS[difficulty].score;
+    alert("정답입니다!\n점수 +" + DIFFICULTY_SETTINGS[difficulty].score);
+  } else {
+    lives--;
+    alert("틀렸습니다!\n정답 해설:\n" + getCorrectAnswerText(questionObj));
+    if (lives <= 0) {
+      endGame("목숨이 모두 소진되었습니다! 게임 종료!");
+      return;
+    }
+  }
+
+  currentQuestionIndex++;
+  loadNextQuestion();
+}
+
+function getCorrectAnswerText(questionObj) {
+  const ans = questionObj.choices.find(c => c.correct);
+  return ans ? ans.text : "(정답 데이터 오류)";
+}
+
+function endGame(msg) {
+  if (energyBarTimer) clearInterval(energyBarTimer);
+  if (totalGameTimer) clearInterval(totalGameTimer);
+
+  alert(msg + "\n최종 점수: " + totalScore);
+  document.getElementById('questionContainer').innerHTML = "<h3>게임 종료</h3>";
+}
+
+// 점수 전송
+async function sendScore() {
+  saveData("삼각부등식", playerName, totalScore, totalGameTime);
+}
+
+async function saveData(game, name, score, elapsedTime) {
+    const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+    const requestData = {
+        game,
+        name,
+        score: parseInt(score, 10),
+        elapsedTime: parseInt(elapsedTime, 10)
+    };
+
+    try {
+        const response = await fetch(FUNCTION_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        });
+
+        const responseData = await response.json();
+
+        if (response.ok) {
+            document.getElementById('response').innerText = 
+                `성공: ${JSON.stringify(responseData, null, 2)}`;
+        } else {
+            document.getElementById('response').innerText = 
+                `오류: ${JSON.stringify(responseData, null, 2)}`;
+        }
+    } catch (error) {
+        console.error('요청 실패:', error);
+        document.getElementById('response').innerText = 
+            `네트워크 오류: ${error.message}`;
+    }
+}
+</script>
+</body>
+</html>
